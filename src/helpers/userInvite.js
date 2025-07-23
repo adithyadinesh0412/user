@@ -253,6 +253,44 @@ module.exports = class UserInviteHelper {
 			const additionalCsvHeaders = keysFilter(_.difference(header, [...userTableFields, ...entityFields]))
 			const isRoleExist = header.some((column) => column.toLowerCase() === 'roles')
 
+			const populateMeta = (data, externalEntityTypes, externalEntityNameIdMap, prunedEntities) => {
+				let meta = {}
+				if (
+					Object.keys(data).length <= 0 ||
+					externalEntityTypes.length <= 0 ||
+					Object.keys(externalEntityNameIdMap).length <= 0
+				)
+					return meta
+				meta = externalEntityTypes.reduce((acc, entity) => {
+					const findEntity = prunedEntities.find((prunedEntity) => prunedEntity.value == entity)
+					if (data[entity] && findEntity) {
+						if (findEntity.data_type === 'ARRAY' || findEntity.data_type === 'ARRAY[STRING]') {
+							const arrayEntity = Array.isArray(data[entity].split(','))
+								? data[entity].split(',')
+								: data[entity].split(',') || []
+							acc[entity] = arrayEntity.map((eachData) => {
+								const processedEntity = eachData[entity]?.replaceAll(/\s+/g, '').toLowerCase()
+								if (
+									externalEntityNameIdMap?.[processedEntity] &&
+									externalEntityNameIdMap?.[processedEntity].entityType == entity
+								) {
+									return externalEntityNameIdMap?.[processedEntity]._id
+								}
+								return null
+							})
+						} else {
+							acc[entity] =
+								externalEntityNameIdMap?.[data[entity]?.replaceAll(/\s+/g, '').toLowerCase()] &&
+								externalEntityNameIdMap?.[data[entity]?.replaceAll(/\s+/g, '').toLowerCase()]
+									.entityType == entity
+									? externalEntityNameIdMap?.[data[entity]?.replaceAll(/\s+/g, '').toLowerCase()]._id
+									: null
+						}
+					}
+					return acc
+				}, {})
+				return meta
+			}
 			// Process rows concurrently
 			await Promise.all(
 				csvToJsonData.map(async (row) => {
@@ -269,36 +307,38 @@ module.exports = class UserInviteHelper {
 					}
 					row.username = row?.username ? row.username.toLowerCase() : null
 					// Extract and prepare meta fields
-					row.meta = {
-						block: row?.block
-							? externalEntityNameIdMap?.[row.block?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
-							: '',
-						state: row?.state
-							? externalEntityNameIdMap?.[row.state?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
-							: '',
-						school: row?.school
-							? externalEntityNameIdMap?.[row.school?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
-							: '',
-						cluster: row?.cluster
-							? externalEntityNameIdMap?.[row.cluster?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
-							: '',
-						district: row?.district
-							? externalEntityNameIdMap?.[row.district?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
-							: '',
-						professional_role: row?.professional_role
-							? externalEntityNameIdMap?.[row.professional_role?.replaceAll(/\s+/g, '').toLowerCase()]
-									?._id || ''
-							: '',
-						professional_subroles: row?.professional_subroles
-							? row.professional_subroles
-									.split(',')
-									.map(
-										(prof_subRole) =>
-											externalEntityNameIdMap[prof_subRole?.replaceAll(/\s+/g, '').toLowerCase()]
-												?._id
-									) || []
-							: [],
-					}
+
+					row.meta = populateMeta(row, externalEntityTypes, externalEntityNameIdMap, prunedEntities)
+					// row.meta = {
+					// 	block: row?.block
+					// 		? externalEntityNameIdMap?.[row.block?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
+					// 		: '',
+					// 	state: row?.state
+					// 		? externalEntityNameIdMap?.[row.state?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
+					// 		: '',
+					// 	school: row?.school
+					// 		? externalEntityNameIdMap?.[row.school?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
+					// 		: '',
+					// 	cluster: row?.cluster
+					// 		? externalEntityNameIdMap?.[row.cluster?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
+					// 		: '',
+					// 	district: row?.district
+					// 		? externalEntityNameIdMap?.[row.district?.replaceAll(/\s+/g, '').toLowerCase()]?._id || null
+					// 		: '',
+					// 	professional_role: row?.professional_role
+					// 		? externalEntityNameIdMap?.[row.professional_role?.replaceAll(/\s+/g, '').toLowerCase()]
+					// 				?._id || ''
+					// 		: '',
+					// 	professional_subroles: row?.professional_subroles
+					// 		? row.professional_subroles
+					// 				.split(',')
+					// 				.map(
+					// 					(prof_subRole) =>
+					// 						externalEntityNameIdMap[prof_subRole?.replaceAll(/\s+/g, '').toLowerCase()]
+					// 							?._id
+					// 				) || []
+					// 		: [],
+					// }
 
 					delete row.block
 					delete row.state
